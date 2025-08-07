@@ -1,6 +1,7 @@
 import type { Namespace } from "socket.io";
 import type { ICardInfo, IRoundResult } from "../interfaces";
 import { settlementHandler } from "../services/handlers";
+import { Lobbies } from "../models/lobbies";
 
 const enum EStatus { ss = "STARTED", pb = "PLACE_BET", cb = "COLLECT_BET", sc = "SHOW_CARDS", ed = "ENDED" };
 export const enum EStatusCode { pb = 1, cb = 2, sc = 3, ed = 4 };
@@ -22,6 +23,7 @@ export class InfiniteGameLobby {
 
     async initGameLoop(): Promise<any> {
         await this.mySleep(2 * 1000)
+        await this.loadRoundResult();
         await this.gameLoop()
     }
 
@@ -49,6 +51,7 @@ export class InfiniteGameLobby {
         await settlementHandler(this.io)
         await this.sleep(EStatusInterval.ed);
 
+        await Lobbies.create(this.roundId, this.roundResult);
         return this.gameLoop();
     }
 
@@ -70,6 +73,12 @@ export class InfiniteGameLobby {
     private storeRoundResults() {
         if (this.prevRoundResults.length >= 3) this.prevRoundResults.shift();
         this.prevRoundResults.push(this.roundResult);
+    }
+    private async loadRoundResult() {
+        if (this.prevRoundResults.length < 3) {
+            // @ts-ignore
+            this.prevRoundResults = await Lobbies.loadPrevThree();
+        }
     }
 
     private emitStatus() { return this.io.emit("message", { event: "game_status", status: this.status }); }
