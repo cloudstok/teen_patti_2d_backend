@@ -1,6 +1,6 @@
 import { createPool } from "mysql2/promise";
 import { createLogger } from "../utilities/logger";
-import { betResult, gameSettings, settlement } from "./tables";
+import { betResult, gameSettings, lobby, settlement } from "./tables";
 import { config } from "dotenv";
 config({ path: ".env" })
 
@@ -30,6 +30,7 @@ export const createTables = async () => {
             }
         }
         await pool.execute(gameSettings);
+        await pool.execute(lobby);
         await pool.execute(betResult);
         await pool.execute(settlement);
     } catch (error: any) {

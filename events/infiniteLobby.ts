@@ -1,11 +1,14 @@
 import type { Namespace } from "socket.io";
 import type { ICardInfo, IRoundResult } from "../interfaces";
 import { settlementHandler } from "../services/handlers";
+import { Lobbies } from "../models/lobbies";
+import { createLogger } from "../utilities/logger";
+const logger = createLogger("lobbies", "jsonl");
 
 const enum EStatus { ss = "STARTED", pb = "PLACE_BET", cb = "COLLECT_BET", sc = "SHOW_CARDS", ed = "ENDED" };
 export const enum EStatusCode { pb = 1, cb = 2, sc = 3, ed = 4 };
 const enum EStatusInterval { pb = 15, cb = 4, sc = 6, ed = 5 };
-// const enum EStatusInterval { pb = 0, cb = 0, sc = 0, ed = 0 };
+// const enum EStatusInterval { pb = 0, cb = 0, sc = 5, ed = 0 };
 
 export class InfiniteGameLobby {
     private io: Namespace;
@@ -22,6 +25,7 @@ export class InfiniteGameLobby {
 
     async initGameLoop(): Promise<any> {
         await this.mySleep(2 * 1000)
+        await this.loadRoundResult();
         await this.gameLoop()
     }
 
@@ -49,6 +53,7 @@ export class InfiniteGameLobby {
         await settlementHandler(this.io)
         await this.sleep(EStatusInterval.ed);
 
+        await Lobbies.create(this.roundId, this.roundResult);
         return this.gameLoop();
     }
 
@@ -66,10 +71,16 @@ export class InfiniteGameLobby {
     }
 
     private setCurrentRoundId() { this.roundId = 1745227259107/* Date.now();*/ }
-    private setCurrentStatus(status: EStatus, statusCode: EStatusCode) { this.status = status; this.statusCode = statusCode; console.log(status, statusCode); }
+    private setCurrentStatus(status: EStatus, statusCode: EStatusCode) { this.status = status; this.statusCode = statusCode; }
     private storeRoundResults() {
         if (this.prevRoundResults.length >= 3) this.prevRoundResults.shift();
         this.prevRoundResults.push(this.roundResult);
+    }
+    private async loadRoundResult() {
+        if (this.prevRoundResults.length < 3) {
+            // @ts-ignore
+            this.prevRoundResults = await Lobbies.loadPrevThree();
+        }
     }
 
     private emitStatus() { return this.io.emit("message", { event: "game_status", status: this.status }); }
@@ -82,18 +93,20 @@ export class InfiniteGameLobby {
             ... new GenerateResults().getResult(),
             roundId: this.roundId,
         }
+        logger.info(JSON.stringify(this.roundResult));
     }
 }
 
 class GenerateResults {
-    private values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    private values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
     private suits = ["H", "C", "D", "S"];
     private deck: ICardInfo[];
     private result;
 
     constructor() {
         this.deck = this.shuffleDeck(this.generateDeck());
-        const { playerACards, playerBCards } = this.pickBothHandCards(this.deck);
+        const { playerACards, playerBCards } = this.pickBothHandCards();
+
         this.result = {
             playerACards,
             playerBCards,
@@ -111,8 +124,6 @@ class GenerateResults {
         return deck;
     }
 
-    // by randomly picking cards from shuffled deck  
-    // ^ed shannon entropy  
     private shuffleDeck(deck: ICardInfo[]) {
         for (let i = deck.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -121,22 +132,15 @@ class GenerateResults {
         return deck;
     }
 
-    // by sequence of start and last cards
-    // less shannon entropy
-    // private pickBothHandCards(shuffledDeck: ICardInfo[]): { playerACards: ICardInfo[], playerBCards: ICardInfo[] } {
-    //     const playerACards = [];
-    //     const playerBCards = [];
-    //     for (let i = 0; i < 3; i++) {
-    //         playerACards.push(shuffledDeck[(i + 1) * 2]);
-    //         playerBCards.push(shuffledDeck[shuffledDeck.length - ((i + 1) * 2)]);
-    //     }
-    //     return { playerACards, playerBCards }
-    // }
-
-    private pickBothHandCards(shuffledDeck: ICardInfo[]): { playerACards: ICardInfo[], playerBCards: ICardInfo[] } {
-        const set = new Set<ICardInfo>();
-        while (set.size < 6) {
-            set.add(this.deck[Math.floor(Math.random() * this.deck.length)]);
+    private pickBothHandCards(): { playerACards: ICardInfo[], playerBCards: ICardInfo[] } {
+        const set = new Set<string>();
+        const playerCards: ICardInfo[] = []
+        while (playerCards.length < 6) {
+            const card = this.deck[Math.floor(Math.random() * this.deck.length)];
+            if (!set.has(card.card)) {
+                set.add(card.card);
+                playerCards.push(card);
+            }
         }
         return { playerACards: this.deck.slice(0, 3), playerBCards: this.deck.slice(3, 6) }
     }
@@ -172,20 +176,32 @@ class GenerateResults {
 
         const hand1 = this.evaluateHand(handACards);
         const hand2 = this.evaluateHand(handBCards);
-
         if (hand1.rank > hand2.rank) {
             return "PLAYER_A";
         } else if (hand2.rank > hand1.rank) {
             return "PLAYER_B";
         } else {
-            // If ranks are equal, compare values
-            if (hand1.value > hand2.value) {
-                return "PLAYER_A";
-            } else if (hand2.value > hand1.value) {
-                return "PLAYER_B";
-            } else {
-                return "TIE";
+
+            // if rank is same, compare card values in descending order
+            const sortedA = [...handACards].sort((a, b) => b.val - a.val);
+            const sortedB = [...handBCards].sort((a, b) => b.val - a.val);
+
+            for (let i = 0; i < 3; i++) {
+                if (sortedA[i].val > sortedB[i].val) return "PLAYER_A";
+                if (sortedB[i].val > sortedA[i].val) return "PLAYER_B";
             }
+
+            const suitRank: Record<string, number> = { "D": 1, "C": 2, "H": 3, "S": 4 }
+
+            for (let i = 0; i < 3; i++) {
+                const suitA = suitRank[sortedA[i].suit];
+                const suitB = suitRank[sortedB[i].suit];
+
+                if (suitA > suitB) return "PLAYER_A";
+                if (suitB > suitA) return "PLAYER_B";
+            }
+
+            return "TIE";
         }
     }
 
