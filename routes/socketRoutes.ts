@@ -17,7 +17,7 @@ export const socketRouter = async (io: Namespace, socket: Socket) => {
             lastWin = lastWin.win_amt;
         }
         setTimeout(() => {
-            socket.emit("message", { event: "game_state", ...gameState });
+            socket.emit("game_state", gameState);
             if (lastWin) socket.emit('lastWin', { lastWin: lastWin && typeof lastWin === "number" ? Number(lastWin).toFixed(2) : "0.00" });
         }, 100);
 

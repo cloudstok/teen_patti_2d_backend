@@ -88,12 +88,12 @@ export const placeBetHandler = async (io: Namespace, socket: Socket, roundId: st
         betlogger.info(JSON.stringify(betObject));
         await BetResults.create(betObject);
         socket.emit("info", { urId: info.urId, urNm: info.urNm, bl: info.bl, operatorId: info.operatorId });
-        return socket.emit("message", { event: "bet_result", message: "bet has been accepted successfully" });
+        return socket.emit("bet_result", { message: "bet has been accepted successfully" });
 
     } catch (error: any) {
         failedBetLogger.error(JSON.stringify(error));
         console.error("error during placing bet", error.message);
-        return socket.emit("betError", { event: "bet_result", message: "unable to place bet", error: error.message });
+        return socket.emit("betError", { message: "unable to place bet", error: error.message });
     }
 }
 
@@ -131,9 +131,9 @@ export const settlementHandler = async (io: Namespace) => {
                 await setCache(plInfo.sid, plInfo);
                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2) || "0.00";
                 io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
-                io.to(plInfo.sid).emit("message", { event: "settlement", winAmt, status: "WIN" })
+                io.to(plInfo.sid).emit("settlment", { winAmt, status: "WIN", winner: roundResult.winner })
             } else {
-                io.to(roundBets[userId].sid).emit("message", { event: "settlement", winAmt: "0.00", status: "LOSS" })
+                io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner })
             }
 
             const userBet = roundBets[userId].userBet

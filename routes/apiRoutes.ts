@@ -71,7 +71,7 @@ apiRouter.get("/bet-history", async (req: any, res: any) => {
     }
 });
 
-apiRouter.get("/match-history", async (req: any, res: any) => {
+apiRouter.get("/bet-details", async (req: any, res: any) => {
     try {
         const { user_id, operator_id, lobby_id } = req.query;
 

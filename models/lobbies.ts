@@ -7,7 +7,7 @@ export class Lobbies {
         return insertId;
     }
     static async loadPrevThree() {
-        const query = "select round_id, result from lobbies order by created_at desc limit 3";
+        const query = "select round_id, result from lobbies order by created_at desc limit 15";
         const [data] = await pool.query(query);
         return data;
     }
