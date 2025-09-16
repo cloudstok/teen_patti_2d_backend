@@ -7,7 +7,6 @@ export const GAME_SETTINGS: IGameSettings = {
     main_mult: {
         PLAYER_A: 1.98,
         PLAYER_B: 1.98,
-
     },
     side_mult: {
         PAIR: 1,
@@ -16,6 +15,5 @@ export const GAME_SETTINGS: IGameSettings = {
         STRAIGHT_FLUSH: 35,
         TRIO: 45
     }
-
 }
 
