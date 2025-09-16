@@ -53,8 +53,17 @@ export interface IGameSettings {
     min_amt: number;
     max_amt: number;
     max_co: number;
-    win_mult: number;
-
+    main_mult: {
+        PLAYER_A: number;
+        PLAYER_B: number;
+    },
+    side_mult: {
+        PAIR: number;
+        FLUSH: number;
+        STRAIGHT: number;
+        STRAIGHT_FLUSH: number;
+        TRIO: number;
+    }
 }
 
 export interface ICardInfo {
@@ -63,9 +72,11 @@ export interface ICardInfo {
     val: number;
 }
 
-export interface IRoundResult {
+export type IHand = { handType: string, rank: number, value: number, cards?: ICardInfo[] }
+export type IDetermineWinner = { winner: "PLAYER_A" | "PLAYER_B" | "TIE", handA: IHand, handB: IHand }
+
+export type IRoundResult = {
     winner: "PLAYER_A" | "PLAYER_B" | "TIE";
     roundId: number;
-    playerACards: ICardInfo[];
-    playerBCards: ICardInfo[];
-}
+
+} & IDetermineWinner;

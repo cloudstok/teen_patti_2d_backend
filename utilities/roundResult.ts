@@ -1,4 +1,4 @@
-import type { ICardInfo } from "../interfaces";
+import type { ICardInfo, IDetermineWinner } from "../interfaces";
 
 export class GenerateResults {
     private values = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
@@ -10,10 +10,11 @@ export class GenerateResults {
         this.deck = this.shuffleDeck(this.generateDeck());
         const { playerACards, playerBCards } = this.pickBothHandCards();
 
+        const winner = this.determineWinner(playerACards, playerBCards);
         this.result = {
-            playerACards,
-            playerBCards,
-            winner: this.determineWinner(playerACards, playerBCards),
+            ...winner,
+            handA: { ...winner.handA, cards: playerACards },
+            handB: { ...winner.handB, cards: playerBCards },
         }
     }
 
@@ -62,27 +63,27 @@ export class GenerateResults {
         const isFlush = suits[0] === suits[1] && suits[1] === suits[2];
 
         if (isTrail) {
-            return { handType: "Trail", rank: 4, value: values[0] };
+            return { handType: "TRIO", rank: 4, value: values[0] };
         } else if (isSequence && isFlush) {
-            return { handType: "Pure Sequence", rank: 3, value: sortedValues[2] };
+            return { handType: "STRAIGHT_FLUSH", rank: 3, value: sortedValues[2] };
         } else if (isSequence) {
-            return { handType: "Sequence", rank: 2, value: sortedValues[2] };
+            return { handType: "STRAIGHT", rank: 2, value: sortedValues[2] };
         } else if (isFlush) {
-            return { handType: "Flush", rank: 1, value: Math.max(...values) };
+            return { handType: "FLUSH", rank: 1, value: Math.max(...values) };
         } else {
             let highCard = Math.max(...values);
-            return { handType: "High Card", rank: 0, value: highCard };
+            return { handType: "HIGH_CARD", rank: 0, value: highCard };
         }
     }
 
-    private determineWinner(handACards: ICardInfo[], handBCards: ICardInfo[]): "PLAYER_A" | "PLAYER_B" | "TIE" {
+    private determineWinner(handACards: ICardInfo[], handBCards: ICardInfo[]): IDetermineWinner {
 
-        const hand1 = this.evaluateHand(handACards);
-        const hand2 = this.evaluateHand(handBCards);
-        if (hand1.rank > hand2.rank) {
-            return "PLAYER_A";
-        } else if (hand2.rank > hand1.rank) {
-            return "PLAYER_B";
+        const handA = this.evaluateHand(handACards);
+        const handB = this.evaluateHand(handBCards);
+        if (handA.rank > handB.rank) {
+            return { winner: "PLAYER_A", handA, handB };
+        } else if (handB.rank > handA.rank) {
+            return { winner: "PLAYER_B", handA, handB };
         } else {
 
             // if rank is same, compare card values in descending order
@@ -90,8 +91,8 @@ export class GenerateResults {
             const sortedB = [...handBCards].sort((a, b) => b.val - a.val);
 
             for (let i = 0; i < 3; i++) {
-                if (sortedA[i].val > sortedB[i].val) return "PLAYER_A";
-                if (sortedB[i].val > sortedA[i].val) return "PLAYER_B";
+                if (sortedA[i].val > sortedB[i].val) return { winner: "PLAYER_A", handA, handB };
+                if (sortedB[i].val > sortedA[i].val) return { winner: "PLAYER_B", handA, handB };
             }
 
             const suitRank: Record<string, number> = { "C": 1, "D": 2, "H": 3, "S": 4 }
@@ -100,11 +101,11 @@ export class GenerateResults {
                 const suitA = suitRank[sortedA[i].suit];
                 const suitB = suitRank[sortedB[i].suit];
 
-                if (suitA > suitB) return "PLAYER_A";
-                if (suitB > suitA) return "PLAYER_B";
+                if (suitA > suitB) return { winner: "PLAYER_A", handA, handB };
+                if (suitB > suitA) return { winner: "PLAYER_B", handA, handB };
             }
 
-            return "TIE";
+            return { winner: "TIE", handA, handB };
         }
     }
 

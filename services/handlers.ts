@@ -28,7 +28,7 @@ export const placeBetHandler = async (io: Namespace, socket: Socket, roundId: st
         const curRndId = gameLobby.getCurrentRoundId();
         if (Number(roundId) !== curRndId.roundId) return socket.emit("betError", "invalid roundId");
 
-        const validSymbols = ["A", "B"];
+        const validSymbols = ["A", "B", "+A", "+B"];
         const betsArr = betData.split(",");
         const userBet: Record<string, number> = {};
         let isInvalidPayload = 0;
@@ -42,10 +42,15 @@ export const placeBetHandler = async (io: Namespace, socket: Socket, roundId: st
                     break;
                 case "B": symbol = "PLAYER_B";
                     break;
+                case "+A": symbol = "+A";
+                    break;
+                case "+B": symbol = "+B";
+                    break;
                 default:
                     isInvalidPayload++;
                     break;
             }
+            console.log(isInvalidPayload, symbol, amt);
             if (userBet[symbol]) userBet[symbol] += amt;
             else userBet[symbol] = amt;
         })
@@ -105,14 +110,33 @@ export const settlementHandler = async (io: Namespace) => {
         if (!roundBets || !Object.keys(roundBets).length) return console.error("no bets found for roundId:", matchId);
 
         const roundResult: IRoundResult = gameLobby.getRoundResult();
+        const winner = `+${roundResult.winner.split("_")[1]}`
+        const mainMults = GS.GAME_SETTINGS.main_mult ?? GAME_SETTINGS.main_mult;
+        const sideMults = GS.GAME_SETTINGS.side_mult ?? GAME_SETTINGS.side_mult;
+        let sideWinner = roundResult.winner == "PLAYER_A" ? roundResult.handA.handType : roundResult.handB.handType;
+
         Object.keys(roundBets).forEach(userId => {
             let ttlWinAmt = 0
-            if (roundBets[userId]?.userBet[roundResult.winner]) {
-                let win_mult = GS.GAME_SETTINGS.win_mult ?? GAME_SETTINGS.win_mult;
-                ttlWinAmt += Number(roundBets[userId]?.userBet[roundResult.winner]) * win_mult;
+
+            const userBets = roundBets[userId]?.userBet;
+            console.log(roundBets[userId], userBets, roundResult, sideWinner);
+            console.log("");
+            if (userBets[roundResult.winner]) {
+                console.log(roundResult.winner, userBets[roundResult.winner], mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
+                const mainWin = Number(userBets[roundResult.winner]) * Number(mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
+                console.log("mainWin", mainWin);
+                ttlWinAmt += mainWin;
             }
+            if (userBets[winner]) {
+                console.log(userBets[winner], sideMults[sideWinner as keyof typeof sideMults]);
+                const sideWin = Number(userBets[winner]) * (Number(sideMults[sideWinner as keyof typeof sideMults]) || 0);
+                console.log("sideWin", sideWin);
+                ttlWinAmt += sideWin;
+            }
+
             const maxCo = Number(GS.GAME_SETTINGS.max_co) ?? GAME_SETTINGS.max_co;
             roundBets[userId]["winning_amount"] = Math.min(ttlWinAmt, maxCo);
+            console.log(roundBets[userId]["winning_amount"], "final win amount");
         })
 
         Object.keys(roundBets).forEach(async (userId) => {
@@ -131,9 +155,9 @@ export const settlementHandler = async (io: Namespace) => {
                 await setCache(plInfo.sid, plInfo);
                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2) || "0.00";
                 io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
-                io.to(plInfo.sid).emit("settlment", { winAmt, status: "WIN", winner: roundResult.winner })
+                io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner })
             } else {
-                io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner })
+                io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner })
             }
 
             const userBet = roundBets[userId].userBet

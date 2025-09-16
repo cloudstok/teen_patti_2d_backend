@@ -1,5 +1,5 @@
 import type { Namespace } from "socket.io";
-import type { IRoundResult } from "../interfaces";
+import type { ICardInfo, IRoundResult } from "../interfaces";
 import { settlementHandler } from "../services/handlers";
 import { Lobbies } from "../models/lobbies";
 import { createLogger } from "../utilities/logger";
@@ -8,7 +8,7 @@ const logger = createLogger("lobbies", "jsonl");
 
 const enum EStatus { ss = "STARTED", pb = "PLACE_BET", cb = "COLLECT_BET", sc = "SHOW_CARDS", ed = "ENDED" };
 export const enum EStatusCode { pb = 1, cb = 2, sc = 3, ed = 4 };
-const enum EStatusInterval { pb = 15, cb = 6, sc = 8, ed = 6 };
+const enum EStatusInterval { pb = 1, cb = 6, sc = 8, ed = 6 };
 // const enum EStatusInterval { pb = 0, cb = 0, sc = 5, ed = 0 };
 
 export class InfiniteGameLobby {
@@ -68,8 +68,10 @@ export class InfiniteGameLobby {
         }
     }
     private async sleepWithCards(seconds: number): Promise<void> {
-        const a = this.roundResult.playerACards.map(c => c.card);
-        const b = this.roundResult.playerBCards.map(c => c.card);
+        const aCards = this.roundResult.handA.cards as ICardInfo[]
+        const bCards = this.roundResult.handB.cards as ICardInfo[]
+        const a = aCards.map(c => c.card);
+        const b = bCards.map(c => c.card);
         for (let i = seconds; i > 0; i--) {
             this.emitRroundResultsWithIntervals(i, a, b);
             await this.mySleep(1000);
