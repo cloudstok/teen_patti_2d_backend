@@ -3,7 +3,7 @@ import { placeBetHandler } from "../services/handlers";
 import { gameLobby } from "../index";
 import { EStatusCode } from "../events/infiniteLobby";
 import type { Info } from "../interfaces";
-import { getCache } from "../cache/redis";
+import { delCache, getCache } from "../cache/redis";
 import { Settlements } from "../models/settlements";
 
 export const socketRouter = async (io: Namespace, socket: Socket) => {
@@ -36,4 +36,10 @@ export const socketRouter = async (io: Namespace, socket: Socket) => {
     } catch (error) {
         console.error("error", error);
     }
+
+    socket.on("disconnect", async (reason: string) => {
+        console.log(`socket disconnected with id: ${socket.id}, reason: ${reason}`);
+        const info: Info = await getCache(socket.id);
+        await delCache(`${info?.urId}:${info?.operatorId}`);
+    });
 }

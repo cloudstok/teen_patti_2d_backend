@@ -9,11 +9,11 @@ export const GAME_SETTINGS: IGameSettings = {
         PLAYER_B: 1.98,
     },
     side_mult: {
-        PAIR: 1,
-        FLUSH: 4,
-        STRAIGHT: 6,
-        STRAIGHT_FLUSH: 35,
-        TRIO: 45
+        PAIR: 2,
+        FLUSH: 5,
+        STRAIGHT: 7,
+        STRAIGHT_FLUSH: 36,
+        TRIO: 46
     }
 }
 

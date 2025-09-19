@@ -27,7 +27,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
-const serverIo = io.of("/")
+export const serverIo = io.of("/")
     .use((socket: Socket, next: Function) => checkAuth(socket, next))
     .on("connection", (socket: Socket) => socketRouter(serverIo, socket));
 

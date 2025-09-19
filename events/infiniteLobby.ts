@@ -86,9 +86,10 @@ export class InfiniteGameLobby {
         this.prevRoundResults.push(this.roundResult);
     }
     private async loadRoundResult() {
-        if (this.prevRoundResults.length < 15) {
+        if (this.prevRoundResults.length < 60) {
             // @ts-ignore
-            this.prevRoundResults = await Lobbies.loadPrevThree();
+            this.prevRoundResults = await Lobbies.loadPrevThree(60);
+            console.log(this.prevRoundResults);
         }
     }
 

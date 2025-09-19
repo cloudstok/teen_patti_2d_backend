@@ -109,8 +109,7 @@ export const prepareDataForWebhook = async (
   key: "CREDIT" | "DEBIT"
 ): Promise<IWebhookData | false> => {
   try {
-    const { id, bet_amount, winning_amount, game_id, user_id, txn_id, ip } =
-      betObj;
+    const { id, bet_amount, winning_amount, game_id, user_id, txn_id, ip } = betObj;
     const obj: IWebhookData = {
       txn_id: generateUUIDv7(),
       ip,

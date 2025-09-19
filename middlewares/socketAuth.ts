@@ -1,4 +1,5 @@
-import { setCache } from "../cache/redis";
+import { serverIo } from "..";
+import { getCache, setCache } from "../cache/redis";
 import type { Info, IUserDetailResponse } from "../interfaces";
 import { Socket } from "socket.io";
 
@@ -17,6 +18,16 @@ export const checkAuth = async (socket: Socket, next: Function) => {
             );
         }
 
+        const lockKey = `${newUser.user.user_id}:${newUser.user.operatorId}`;
+        const sid = await getCache(lockKey);
+        if (sid) {
+            const socket = serverIo.sockets.get(sid);
+            if (socket) {
+                socket.emit('betError', 'User connected from another source');
+                socket.disconnect(true);
+            }
+        }
+
         const info: Info = {
             urId: newUser.user.user_id,
             urNm: newUser.user.name,
@@ -29,6 +40,7 @@ export const checkAuth = async (socket: Socket, next: Function) => {
         };
 
         await setCache(socket.id, info);
+        await setCache(lockKey, socket.id);
         setTimeout(() => {
             socket.emit("info", { urId: info.urId, urNm: info.urNm, bl: info.bl, operatorId: info.operatorId });
         }, 50);

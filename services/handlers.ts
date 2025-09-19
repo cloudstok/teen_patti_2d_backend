@@ -154,8 +154,9 @@ export const settlementHandler = async (io: Namespace) => {
                 plInfo.bl += Number(roundBets[userId]["winning_amount"] || 0);
                 await setCache(plInfo.sid, plInfo);
                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2) || "0.00";
-                io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
                 io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner })
+                io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
+                io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt && typeof winAmt === "number" ? Number(winAmt).toFixed(2) : "0.00" });
             } else {
                 io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner })
             }
