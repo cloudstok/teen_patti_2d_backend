@@ -8,7 +8,41 @@ export class GenerateResults {
 
     constructor() {
         this.deck = this.shuffleDeck(this.generateDeck());
-        const { playerACards, playerBCards } = this.pickBothHandCards();
+        const { playerACards, playerBCards } = {
+            playerACards: [{
+                "val": 11,
+                "card": "S11",
+                "suit": "S"
+            },
+            {
+                "val": 11,
+                "card": "S11",
+                "suit": "S"
+            },
+            {
+                "val": 9,
+                "card": "C9",
+                "suit": "C"
+            }],
+            playerBCards: [
+                {
+                    "val": 5,
+                    "card": "C5",
+                    "suit": "C"
+                },
+                {
+                    "val": 5,
+                    "card": "C5",
+                    "suit": "C"
+                },
+                {
+                    "val": 4,
+                    "card": "C4",
+                    "suit": "C"
+                }
+            ]
+        }
+        // this.pickBothHandCards();
 
         const winner = this.determineWinner(playerACards, playerBCards);
         this.result = {

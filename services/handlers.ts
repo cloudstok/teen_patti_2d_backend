@@ -107,63 +107,83 @@ export const settlementHandler = async (io: Namespace) => {
         const curRndId = gameLobby.getCurrentRoundId();
         const matchId = `${curRndId.roundId}`;
         const roundBets = await getCache(matchId);
-        if (!roundBets || !Object.keys(roundBets).length) return console.error("no bets found for roundId:", matchId);
+        if (!roundBets || !Object.keys(roundBets).length) {
+            return console.error("no bets found for roundId:", matchId);
+        }
 
         const roundResult: IRoundResult = gameLobby.getRoundResult();
-        const winner = `+${roundResult.winner.split("_")[1]}`
+        const winner = `+${roundResult.winner.split("_")[1]}`;
         const mainMults = GS.GAME_SETTINGS.main_mult ?? GAME_SETTINGS.main_mult;
         const sideMults = GS.GAME_SETTINGS.side_mult ?? GAME_SETTINGS.side_mult;
-        let sideWinner = roundResult.winner == "PLAYER_A" ? roundResult.handA.handType : roundResult.handB.handType;
+        let sideWinner = roundResult.winner === "PLAYER_A"
+            ? roundResult.handA.handType
+            : roundResult.handB.handType;
+        console.log({ sideWinner });
 
-        Object.keys(roundBets).forEach(userId => {
-            let ttlWinAmt = 0
+        // process each user's bets
+        for (const userId of Object.keys(roundBets)) {
+            let ttlWinAmt = 0;
+            const userBets = roundBets[userId]?.userBet || {};
+            const detailedBets: any[] = [];
 
-            const userBets = roundBets[userId]?.userBet;
-            console.log(roundBets[userId], userBets, roundResult, sideWinner);
-            console.log("");
-            if (userBets[roundResult.winner]) {
-                console.log(roundResult.winner, userBets[roundResult.winner], mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
-                const mainWin = Number(userBets[roundResult.winner]) * Number(mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
-                console.log("mainWin", mainWin);
-                ttlWinAmt += mainWin;
+            // loop through all bets placed by this user
+            for (const [betOn, stake] of Object.entries(userBets)) {
+                if (!stake || Number(stake) <= 0) continue;
+
+                let odds = 0, profit = 0, loss = Number(stake);
+
+                if (betOn === roundResult.winner) {
+                    odds = Number(mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
+                    profit = +(Number(stake) * odds - Number(stake)).toFixed(2);
+                    loss = 0;
+                } else if (betOn === winner) {
+                    odds = Number(sideMults[sideWinner as keyof typeof sideMults]) || 0;
+                    profit = +(Number(stake) * odds - Number(stake)).toFixed(2);
+                    loss = 0;
+                }
+
+                if (profit > 0) {
+                    ttlWinAmt += profit + Number(stake); // add stake back in
+                }
+
+                detailedBets.push({
+                    bet_on: betOn,
+                    stake: Number(stake),
+                    odds,
+                    profit,
+                    loss
+                });
             }
-            if (userBets[winner]) {
-                console.log(userBets[winner], sideMults[sideWinner as keyof typeof sideMults]);
-                const sideWin = Number(userBets[winner]) * (Number(sideMults[sideWinner as keyof typeof sideMults]) || 0);
-                console.log("sideWin", sideWin);
-                ttlWinAmt += sideWin;
-            }
 
+            // cap winnings
             const maxCo = Number(GS.GAME_SETTINGS.max_co) ?? GAME_SETTINGS.max_co;
             roundBets[userId]["winning_amount"] = Math.min(ttlWinAmt, maxCo);
-            console.log(roundBets[userId]["winning_amount"], "final win amount");
-        })
 
-        Object.keys(roundBets).forEach(async (userId) => {
-            if (roundBets[userId]["winning_amount"]) {
-
+            // CREDIT handling
+            if (roundBets[userId]["winning_amount"] > 0) {
                 const playerDetails: IPlayerDetails = {
                     game_id: roundBets[userId]?.gmId,
                     operatorId: roundBets[userId]?.operatorId,
                     token: roundBets[userId]?.token
-                }
+                };
+
                 const cdtRes = await updateBalanceFromAccount(roundBets[userId], "CREDIT", playerDetails);
                 if (!cdtRes) console.error("credit txn failed for user_id", userId);
 
                 let plInfo: Info = await getCache(roundBets[userId].sid);
-                plInfo.bl += Number(roundBets[userId]["winning_amount"] || 0);
+                plInfo.bl += Number(roundBets[userId]["winning_amount"]);
                 await setCache(plInfo.sid, plInfo);
-                const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2) || "0.00";
-                io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner })
-                io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
-                io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt && typeof winAmt === "number" ? Number(winAmt).toFixed(2) : "0.00" });
-            } else {
-                io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner })
-            }
 
-            const userBet = roundBets[userId].userBet
-            let betAmt = 0;
-            Object.keys(userBet).map(symbol => betAmt += Number(userBet[symbol]))
+                const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2);
+                io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner });
+                io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId });
+                io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt });
+            } else {
+                io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner });
+            }
+            console.log(detailedBets);
+            // prepare settlement row
+            const betAmt: number = Object.values<number>(userBets as Record<string, number>).reduce((acc, val) => acc + Number(val), 0);
 
             const stmtObj = {
                 user_id: userId,
@@ -171,19 +191,102 @@ export const settlementHandler = async (io: Namespace) => {
                 operator_id: roundBets[userId]?.operatorId,
                 bet_amt: isNaN(betAmt) ? 0 : betAmt,
                 win_amt: Number(roundBets[userId]["winning_amount"] || 0),
-                bet_values: roundBets[userId].userBet,
+                bet_values: userBets,
+                settled_bets: detailedBets,
                 round_result: roundResult,
-                status: roundBets[userId]["winning_amount"] ? "WIN" : "LOSS"
-            }
+                status: roundBets[userId]["winning_amount"] > 0 ? "WIN" : "LOSS",
+                created_at: new Date()
+            };
+
             settlementlogger.info(JSON.stringify(stmtObj));
             await Settlements.create(stmtObj);
-        });
+        }
 
         return await delCache(matchId);
 
     } catch (error: any) {
         failedSettlementLogger.error(JSON.stringify(error));
         console.error("error during settlement", error.message);
-        return io.emit("betError", { event: "settlement", message: "unable to process settlements", error: error.message })
+        return io.emit("betError", { event: "settlement", message: "unable to process settlements", error: error.message });
     }
-}
+};
+
+
+// export const settlementHandler = async (io: Namespace) => {
+//     try {
+//         const curRndId = gameLobby.getCurrentRoundId();
+//         const matchId = `${curRndId.roundId}`;
+//         const roundBets = await getCache(matchId);
+//         if (!roundBets || !Object.keys(roundBets).length) return console.error("no bets found for roundId:", matchId);
+
+//         const roundResult: IRoundResult = gameLobby.getRoundResult();
+//         const winner = `+${roundResult.winner.split("_")[1]}`
+//         const mainMults = GS.GAME_SETTINGS.main_mult ?? GAME_SETTINGS.main_mult;
+//         const sideMults = GS.GAME_SETTINGS.side_mult ?? GAME_SETTINGS.side_mult;
+//         let sideWinner = roundResult.winner == "PLAYER_A" ? roundResult.handA.handType : roundResult.handB.handType;
+
+//         Object.keys(roundBets).forEach(userId => {
+//             let ttlWinAmt = 0
+
+//             const userBets = roundBets[userId]?.userBet;
+//             if (userBets[roundResult.winner]) {
+//                 const mainWin = Number(userBets[roundResult.winner]) * Number(mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
+//                 ttlWinAmt += mainWin;
+//             }
+//             if (userBets[winner]) {
+//                 const sideWin = Number(userBets[winner]) * (Number(sideMults[sideWinner as keyof typeof sideMults]) || 0);
+//                 ttlWinAmt += sideWin;
+//             }
+
+//             const maxCo = Number(GS.GAME_SETTINGS.max_co) ?? GAME_SETTINGS.max_co;
+//             roundBets[userId]["winning_amount"] = Math.min(ttlWinAmt, maxCo);
+//         })
+
+//         Object.keys(roundBets).forEach(async (userId) => {
+//             if (roundBets[userId]["winning_amount"]) {
+
+//                 const playerDetails: IPlayerDetails = {
+//                     game_id: roundBets[userId]?.gmId,
+//                     operatorId: roundBets[userId]?.operatorId,
+//                     token: roundBets[userId]?.token
+//                 }
+//                 const cdtRes = await updateBalanceFromAccount(roundBets[userId], "CREDIT", playerDetails);
+//                 if (!cdtRes) console.error("credit txn failed for user_id", userId);
+
+//                 let plInfo: Info = await getCache(roundBets[userId].sid);
+//                 plInfo.bl += Number(roundBets[userId]["winning_amount"] || 0);
+//                 await setCache(plInfo.sid, plInfo);
+//                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2) || "0.00";
+//                 io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner })
+//                 io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
+//                 io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt && typeof winAmt === "number" ? Number(winAmt).toFixed(2) : "0.00" });
+//             } else {
+//                 io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner })
+//             }
+
+//             const userBet = roundBets[userId].userBet
+//             let betAmt = 0;
+//             Object.keys(userBet).map(symbol => betAmt += Number(userBet[symbol]))
+
+//             const stmtObj = {
+//                 user_id: userId,
+//                 round_id: matchId,
+//                 operator_id: roundBets[userId]?.operatorId,
+//                 bet_amt: isNaN(betAmt) ? 0 : betAmt,
+//                 win_amt: Number(roundBets[userId]["winning_amount"] || 0),
+//                 bet_values: roundBets[userId].userBet,
+//                 round_result: roundResult,
+//                 status: roundBets[userId]["winning_amount"] ? "WIN" : "LOSS"
+//             }
+//             settlementlogger.info(JSON.stringify(stmtObj));
+//             await Settlements.create(stmtObj);
+//         });
+
+//         return await delCache(matchId);
+
+//     } catch (error: any) {
+//         failedSettlementLogger.error(JSON.stringify(error));
+//         console.error("error during settlement", error.message);
+//         return io.emit("betError", { event: "settlement", message: "unable to process settlements", error: error.message })
+//     }
+// }

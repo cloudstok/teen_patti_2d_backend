@@ -30,6 +30,7 @@ export const settlement = `create table if not exists settlements (
     bet_amt float,
     win_amt float,
     bet_values json,
+    settled_bets json,
     round_result json,
     status enum("WIN", "LOSS"),
     created_at timestamp default current_timestamp
