@@ -112,54 +112,64 @@ export const settlementHandler = async (io: Namespace) => {
         }
 
         const roundResult: IRoundResult = gameLobby.getRoundResult();
-        const winner = `+${roundResult.winner.split("_")[1]}`;
         const mainMults = GS.GAME_SETTINGS.main_mult ?? GAME_SETTINGS.main_mult;
         const sideMults = GS.GAME_SETTINGS.side_mult ?? GAME_SETTINGS.side_mult;
-        let sideWinner = roundResult.winner === "PLAYER_A"
+
+        // Side winner label: "+A" or "+B"
+        const sideWinner = roundResult.winner === "PLAYER_A" ? "+A" : "+B";
+        const sideHandType = roundResult.winner === "PLAYER_A"
             ? roundResult.handA.handType
             : roundResult.handB.handType;
-        console.log({ sideWinner });
 
-        // process each user's bets
+        console.log("---------", roundResult.winner, sideWinner, sideHandType);
+
         for (const userId of Object.keys(roundBets)) {
-            let ttlWinAmt = 0;
             const userBets = roundBets[userId]?.userBet || {};
+            let ttlWinAmt = 0;
             const detailedBets: any[] = [];
 
-            // loop through all bets placed by this user
             for (const [betOn, stake] of Object.entries(userBets)) {
                 if (!stake || Number(stake) <= 0) continue;
 
-                let odds = 0, profit = 0, loss = Number(stake);
+                let odds = 0;
+                let profit = 0;
+                let loss = Number(stake);
 
+                // Main bet win (PLAYER_A or PLAYER_B)
                 if (betOn === roundResult.winner) {
                     odds = Number(mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
                     profit = +(Number(stake) * odds - Number(stake)).toFixed(2);
                     loss = 0;
-                } else if (betOn === winner) {
-                    odds = Number(sideMults[sideWinner as keyof typeof sideMults]) || 0;
-                    profit = +(Number(stake) * odds - Number(stake)).toFixed(2);
-                    loss = 0;
+                }
+                // Side bet win (+A or +B)
+                else if (betOn === sideWinner) {
+                    odds = Number(sideMults[sideHandType as keyof typeof sideMults]) || 0;
+                    if (odds > 0) {
+                        profit = +(Number(stake) * odds - Number(stake)).toFixed(2);
+                        loss = 0;
+                    } else {
+                        profit = 0;
+                        loss = Number(stake);
+                    }
                 }
 
-                if (profit > 0) {
-                    ttlWinAmt += profit + Number(stake); // add stake back in
-                }
+                if (profit > 0) ttlWinAmt += profit + Number(stake);
 
                 detailedBets.push({
                     bet_on: betOn,
                     stake: Number(stake),
                     odds,
-                    profit,
-                    loss
+                    profit: profit > 0 ? profit : 0,
+                    loss: profit > 0 ? 0 : Number(stake),
                 });
             }
 
-            // cap winnings
+            // Cap winnings
             const maxCo = Number(GS.GAME_SETTINGS.max_co) ?? GAME_SETTINGS.max_co;
             roundBets[userId]["winning_amount"] = Math.min(ttlWinAmt, maxCo);
 
             // CREDIT handling
+            const plInfo: Info = await getCache(roundBets[userId].sid);
             if (roundBets[userId]["winning_amount"] > 0) {
                 const playerDetails: IPlayerDetails = {
                     game_id: roundBets[userId]?.gmId,
@@ -170,21 +180,19 @@ export const settlementHandler = async (io: Namespace) => {
                 const cdtRes = await updateBalanceFromAccount(roundBets[userId], "CREDIT", playerDetails);
                 if (!cdtRes) console.error("credit txn failed for user_id", userId);
 
-                let plInfo: Info = await getCache(roundBets[userId].sid);
                 plInfo.bl += Number(roundBets[userId]["winning_amount"]);
                 await setCache(plInfo.sid, plInfo);
 
                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2);
-                io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner });
+                io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: sideWinner });
                 io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId });
                 io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt });
             } else {
-                io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner });
+                io.to(plInfo.sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: sideWinner });
             }
-            console.log(detailedBets);
-            // prepare settlement row
-            const betAmt: number = Object.values<number>(userBets as Record<string, number>).reduce((acc, val) => acc + Number(val), 0);
 
+            // Store settlement in DB
+            const betAmt: number = Object.values<number>(userBets as Record<string, number>).reduce((acc, val) => acc + Number(val), 0);
             const stmtObj = {
                 user_id: userId,
                 round_id: matchId,
@@ -212,81 +220,10 @@ export const settlementHandler = async (io: Namespace) => {
 };
 
 
-// export const settlementHandler = async (io: Namespace) => {
-//     try {
-//         const curRndId = gameLobby.getCurrentRoundId();
-//         const matchId = `${curRndId.roundId}`;
-//         const roundBets = await getCache(matchId);
-//         if (!roundBets || !Object.keys(roundBets).length) return console.error("no bets found for roundId:", matchId);
+/* EMIT AS PAIR DOESN'T MEAN SIDE WINNINGS. ITS JUST TO SHOW WHICH SIDE WON.
+   ACTUAL SIDE WINNINGS DEPENDS ON THE HAND TYPE. I.E. IF PLAYER_A WINS WITH A PAIR, 
+   ALL +A BETS WILL BE PAID ACCORDING TO THE PAIR ODDS. IF PLAYER_B WINS WITH A FLUSH,
+   ALL +B BETS WILL BE PAID ACCORDING TO THE FLUSH ODDS. IF ODDS=0, NO WINNINGS FOR SIDE BETS. 
+*/
 
-//         const roundResult: IRoundResult = gameLobby.getRoundResult();
-//         const winner = `+${roundResult.winner.split("_")[1]}`
-//         const mainMults = GS.GAME_SETTINGS.main_mult ?? GAME_SETTINGS.main_mult;
-//         const sideMults = GS.GAME_SETTINGS.side_mult ?? GAME_SETTINGS.side_mult;
-//         let sideWinner = roundResult.winner == "PLAYER_A" ? roundResult.handA.handType : roundResult.handB.handType;
-
-//         Object.keys(roundBets).forEach(userId => {
-//             let ttlWinAmt = 0
-
-//             const userBets = roundBets[userId]?.userBet;
-//             if (userBets[roundResult.winner]) {
-//                 const mainWin = Number(userBets[roundResult.winner]) * Number(mainMults[roundResult.winner as "PLAYER_A" | "PLAYER_B"]);
-//                 ttlWinAmt += mainWin;
-//             }
-//             if (userBets[winner]) {
-//                 const sideWin = Number(userBets[winner]) * (Number(sideMults[sideWinner as keyof typeof sideMults]) || 0);
-//                 ttlWinAmt += sideWin;
-//             }
-
-//             const maxCo = Number(GS.GAME_SETTINGS.max_co) ?? GAME_SETTINGS.max_co;
-//             roundBets[userId]["winning_amount"] = Math.min(ttlWinAmt, maxCo);
-//         })
-
-//         Object.keys(roundBets).forEach(async (userId) => {
-//             if (roundBets[userId]["winning_amount"]) {
-
-//                 const playerDetails: IPlayerDetails = {
-//                     game_id: roundBets[userId]?.gmId,
-//                     operatorId: roundBets[userId]?.operatorId,
-//                     token: roundBets[userId]?.token
-//                 }
-//                 const cdtRes = await updateBalanceFromAccount(roundBets[userId], "CREDIT", playerDetails);
-//                 if (!cdtRes) console.error("credit txn failed for user_id", userId);
-
-//                 let plInfo: Info = await getCache(roundBets[userId].sid);
-//                 plInfo.bl += Number(roundBets[userId]["winning_amount"] || 0);
-//                 await setCache(plInfo.sid, plInfo);
-//                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2) || "0.00";
-//                 io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: winner })
-//                 io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId })
-//                 io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt && typeof winAmt === "number" ? Number(winAmt).toFixed(2) : "0.00" });
-//             } else {
-//                 io.to(roundBets[userId].sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: winner })
-//             }
-
-//             const userBet = roundBets[userId].userBet
-//             let betAmt = 0;
-//             Object.keys(userBet).map(symbol => betAmt += Number(userBet[symbol]))
-
-//             const stmtObj = {
-//                 user_id: userId,
-//                 round_id: matchId,
-//                 operator_id: roundBets[userId]?.operatorId,
-//                 bet_amt: isNaN(betAmt) ? 0 : betAmt,
-//                 win_amt: Number(roundBets[userId]["winning_amount"] || 0),
-//                 bet_values: roundBets[userId].userBet,
-//                 round_result: roundResult,
-//                 status: roundBets[userId]["winning_amount"] ? "WIN" : "LOSS"
-//             }
-//             settlementlogger.info(JSON.stringify(stmtObj));
-//             await Settlements.create(stmtObj);
-//         });
-
-//         return await delCache(matchId);
-
-//     } catch (error: any) {
-//         failedSettlementLogger.error(JSON.stringify(error));
-//         console.error("error during settlement", error.message);
-//         return io.emit("betError", { event: "settlement", message: "unable to process settlements", error: error.message })
-//     }
-// }
+/* NOTE: IN CASE OF TIE, NO MAIN WINNINGS. SIDE BETS ARE SETTLED AS PER HAND TYPE OF PLAYER_A (OR PLAYER_B, AS THEY ARE SAME) */

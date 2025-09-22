@@ -8,41 +8,7 @@ export class GenerateResults {
 
     constructor() {
         this.deck = this.shuffleDeck(this.generateDeck());
-        const { playerACards, playerBCards } = {
-            playerACards: [{
-                "val": 11,
-                "card": "S11",
-                "suit": "S"
-            },
-            {
-                "val": 11,
-                "card": "S11",
-                "suit": "S"
-            },
-            {
-                "val": 9,
-                "card": "C9",
-                "suit": "C"
-            }],
-            playerBCards: [
-                {
-                    "val": 5,
-                    "card": "C5",
-                    "suit": "C"
-                },
-                {
-                    "val": 5,
-                    "card": "C5",
-                    "suit": "C"
-                },
-                {
-                    "val": 4,
-                    "card": "C4",
-                    "suit": "C"
-                }
-            ]
-        }
-        // this.pickBothHandCards();
+        const { playerACards, playerBCards } = this.pickBothHandCards();
 
         const winner = this.determineWinner(playerACards, playerBCards);
         this.result = {
@@ -105,6 +71,16 @@ export class GenerateResults {
         } else if (isFlush) {
             return { handType: "FLUSH", rank: 1, value: Math.max(...values) };
         } else {
+            // Check for Pair
+            const valueCounts: Record<number, number> = {};
+            for (const v of values) valueCounts[v] = (valueCounts[v] || 0) + 1;
+
+            const pairValue = Object.keys(valueCounts).find(key => valueCounts[+key] === 2);
+            if (pairValue) {
+                return { handType: "PAIR", rank: 0.5, value: Number(pairValue) }; // rank < FLUSH, > HIGH_CARD
+            }
+
+            // Otherwise HIGH_CARD
             let highCard = Math.max(...values);
             return { handType: "HIGH_CARD", rank: 0, value: highCard };
         }
