@@ -185,8 +185,12 @@ export const settlementHandler = async (io: Namespace) => {
 
                 const winAmt = Number(roundBets[userId]["winning_amount"]).toFixed(2);
                 io.to(plInfo.sid).emit("settlement", { winAmt, status: "WIN", winner: roundResult.winner, pair: sideWinner });
-                io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId });
-                io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt });
+                setTimeout(() => {
+                    io.to(plInfo.sid).emit("info", { urId: plInfo.urId, urNm: plInfo.urNm, bl: plInfo.bl, operatorId: plInfo.operatorId });
+                }, 2000);
+                setTimeout(() => {
+                    io.to(plInfo.sid).emit("lastWin", { lastWin: winAmt });
+                }, 13000);
             } else {
                 io.to(plInfo.sid).emit("settlement", { winAmt: 0.00, status: "LOSS", winner: roundResult.winner, pair: sideWinner });
             }

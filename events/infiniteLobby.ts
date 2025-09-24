@@ -8,7 +8,7 @@ const logger = createLogger("lobbies", "jsonl");
 
 const enum EStatus { ss = "STARTED", pb = "PLACE_BET", cb = "COLLECT_BET", sc = "SHOW_CARDS", ed = "ENDED" };
 export const enum EStatusCode { pb = 1, cb = 2, sc = 3, ed = 4 };
-const enum EStatusInterval { pb = 15, cb = 6, sc = 8, ed = 6 };
+const enum EStatusInterval { pb = 15, cb = 6, sc = 12, ed = 6 };
 // const enum EStatusInterval { pb = 0, cb = 0, sc = 5, ed = 0 };
 
 export class InfiniteGameLobby {
@@ -43,11 +43,11 @@ export class InfiniteGameLobby {
         this.storeRoundResults();
 
         setTimeout(async () => {
+            this.emitRoundResult();
             await settlementHandler(this.io)
         }, 2500);
         this.setCurrentStatus(EStatus.sc, EStatusCode.sc);
         await this.sleepWithCards(EStatusInterval.sc);
-        this.emitRoundResult();
 
         this.setCurrentStatus(EStatus.ed, EStatusCode.ed);
         await this.sleep(EStatusInterval.ed);
@@ -89,13 +89,17 @@ export class InfiniteGameLobby {
         if (this.prevRoundResults.length < 60) {
             // @ts-ignore
             this.prevRoundResults = await Lobbies.loadPrevThree(60);
-            console.log(this.prevRoundResults);
         }
     }
 
     private emitIntervalSeconds(t: number) { return this.io.emit("message", { data: `round:${this.roundId}:${this.statusCode}:${t}` }); }
     private emitRroundResultsWithIntervals(t: number, a: string[], b: string[]) { return this.io.emit("message", { data: `round:${this.roundId}:${this.statusCode}:${t}:[${a}]:[${b}]` }) }
-    private emitRoundResult() { return this.io.emit("round_result", { roundId: this.roundId, winner: this.roundResult.winner, pair: `+${this.roundResult.winner.split("_")[1]}` }) }
+    private emitRoundResult() {
+        return this.io.emit("round_result", {
+            ...this.roundResult,
+            pair: `+${this.roundResult.winner.split("_")[1]}`
+        })
+    }
     private generateRoundResult() {
         this.roundResult = {
             ... new GenerateResults().getResult(),

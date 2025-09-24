@@ -46,7 +46,10 @@ export class GenerateResults {
                 playerCards.push(card);
             }
         }
-        return { playerACards: this.deck.slice(0, 3), playerBCards: this.deck.slice(3, 6) }
+        return {
+            playerACards: this.deck.slice(0, 3),
+            playerBCards: this.deck.slice(3, 6)
+        }
     }
 
 
@@ -96,6 +99,11 @@ export class GenerateResults {
             return { winner: "PLAYER_B", handA, handB };
         } else {
 
+            if (handA.rank === handB.rank) {
+                if (handA.value > handB.value) return { winner: "PLAYER_A", handA, handB };
+                if (handB.value > handA.value) return { winner: "PLAYER_B", handA, handB };
+            }
+
             // if rank is same, compare card values in descending order
             const sortedA = [...handACards].sort((a, b) => b.val - a.val);
             const sortedB = [...handBCards].sort((a, b) => b.val - a.val);
@@ -105,12 +113,11 @@ export class GenerateResults {
                 if (sortedB[i].val > sortedA[i].val) return { winner: "PLAYER_B", handA, handB };
             }
 
-            const suitRank: Record<string, number> = { "C": 1, "D": 2, "H": 3, "S": 4 }
+            const suitRank: Record<string, number> = { "D": 1, "C": 2, "H": 3, "S": 4 }
 
             for (let i = 0; i < 3; i++) {
                 const suitA = suitRank[sortedA[i].suit];
                 const suitB = suitRank[sortedB[i].suit];
-
                 if (suitA > suitB) return { winner: "PLAYER_A", handA, handB };
                 if (suitB > suitA) return { winner: "PLAYER_B", handA, handB };
             }
