@@ -72,7 +72,7 @@ export interface ICardInfo {
     val: number;
 }
 
-export type IHand = { handType: string, rank: number, value: number, cards?: ICardInfo[] }
+export type IHand = { handType: string, rank: number, value: number, cards?: ICardInfo[], kicker?: number }
 export type IDetermineWinner = { winner: "PLAYER_A" | "PLAYER_B" | "TIE", handA: IHand, handB: IHand }
 
 export type IRoundResult = {
